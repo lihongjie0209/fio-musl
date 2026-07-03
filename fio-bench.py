@@ -7,8 +7,8 @@ fio 磁盘性能压测脚本
     python3 fio-bench.py <fio路径> <磁盘路径> -o report.md  # 保存到文件
 
 示例:
-    python3 fio-bench.py ./fio-x86_64 /dev/nvme0n1
-    python3 fio-bench.py /usr/bin/fio /tmp/fio-test -o bench.md
+    python3 fio-bench.py ./fio-x86_64 /tmp/fio-test
+    python3 fio-bench.py /usr/bin/fio /mnt/data/bench -o report.md -t 60
 """
 
 import sys
@@ -74,40 +74,28 @@ def run_cmd(cmd):
 # 核心函数
 # ============================================================
 
-def detect_target(disk_path):
-    """检测测试目标信息"""
-    info = {"path": disk_path}
+def detect_target(path):
+    """检测测试路径所在的文件系统信息"""
+    info = {"path": path}
 
-    if os.path.islink(disk_path):
-        disk_path = os.path.realpath(disk_path)
+    if os.path.islink(path):
+        path = os.path.realpath(path)
 
-    if os.path.isfile(disk_path) or not os.path.exists(disk_path):
-        info["type"] = "文件"
-        d = os.path.dirname(os.path.abspath(disk_path))
-        rc, out, _ = run_cmd(["df", "-T", d])
-        if rc == 0:
-            parts = out.strip().split("\n")
-            if len(parts) >= 2:
-                cols = parts[1].split()
-                if len(cols) >= 2:
-                    info["device"] = cols[0]
-                    info["fs_type"] = cols[1]
-    else:
-        info["type"] = "块设备"
-        name = os.path.basename(disk_path)
-        try:
-            with open(f"/sys/block/{name}/queue/rotational") as f:
-                rot = f.read().strip()
-            info["disk_type"] = "HDD" if rot == "1" else "SSD/NVMe"
-        except:
-            info["disk_type"] = "块设备"
+    d = os.path.dirname(os.path.abspath(path))
+    rc, out, _ = run_cmd(["df", "-T", d])
+    if rc == 0:
+        parts = out.strip().split("\n")
+        if len(parts) >= 2:
+            cols = parts[1].split()
+            if len(cols) >= 2:
+                info["device"] = cols[0]
+                info["fs_type"] = cols[1]
 
     return info
 
 
 def run_fio(fio_bin, disk_path, name, rw, bs, iodepth, runtime, extra=""):
     """运行单项 fio 测试，返回 dict 或 None"""
-    filename = f"--filename={disk_path}" if os.path.isfile(disk_path) or not os.path.exists(disk_path) else ""
     is_mix = (rw == "randrw")
 
     cmd = [
@@ -117,11 +105,10 @@ def run_fio(fio_bin, disk_path, name, rw, bs, iodepth, runtime, extra=""):
         f"--iodepth={iodepth}", f"--runtime={runtime}",
         "--time_based", "--direct=1",
         "--randrepeat=0", "--refill_buffers", "--norandommap",
+        f"--filename={disk_path}",
     ]
     if is_mix and extra:
         cmd.append(extra)
-    if filename:
-        cmd.append(filename)
     cmd.append("--output-format=json")
 
     sys.stderr.write("    ")
@@ -199,8 +186,6 @@ def generate_report(target_info, results, fio_ver, runtime):
         f"| **fio 版本** | {fio_ver} |",
         f"| **测试目标** | {target_info['path']} |",
     ]
-    if "disk_type" in target_info:
-        lines.append(f"| **磁盘类型** | {target_info['disk_type']} |")
     if "fs_type" in target_info:
         lines.append(f"| **文件系统** | {target_info['fs_type']} |")
     if "device" in target_info:
@@ -281,11 +266,11 @@ def main():
         i += 1
 
     if not fio_bin or not disk_path:
-        sys.stderr.write("用法: python3 fio-bench.py <fio路径> <磁盘路径> [-t 秒数] [-o 报告文件]\n")
+        sys.stderr.write("用法: python3 fio-bench.py <fio路径> <测试文件路径> [-t 秒数] [-o 输出文件]\n")
         sys.stderr.write("示例:\n")
-        sys.stderr.write("  python3 fio-bench.py ./fio-x86_64 /dev/nvme0n1              # 每项 30s，约 4 分钟\n")
-        sys.stderr.write("  python3 fio-bench.py ./fio-x86_64 /dev/nvme0n1 -t 10        # 每项 10s，约 1.5 分钟\n")
-        sys.stderr.write("  python3 fio-bench.py /usr/bin/fio /tmp/fio-test -t 60 -o bench.md\n")
+        sys.stderr.write("  python3 fio-bench.py ./fio /tmp/fio-test                # 每项 30s，约 4 分钟\n")
+        sys.stderr.write("  python3 fio-bench.py ./fio /mnt/data/bench -t 10        # 每项 10s，约 1.5 分钟\n")
+        sys.stderr.write("  python3 fio-bench.py ./fio /tmp/fio-test -t 60 -o report.md\n")
         sys.exit(1)
 
     if not os.path.isfile(fio_bin):
@@ -300,8 +285,6 @@ def main():
 
     log(f"fio {fio_ver} | 目标: {disk_path}")
     target_info = detect_target(disk_path)
-    if target_info["type"] == "块设备":
-        warn("块设备测试会直接写入数据，请确认设备空闲！")
 
     total_time = len(TESTS) * runtime
     log(f"开始测试 (共 {len(TESTS)} 项，每项 {runtime}s，预计 {total_time}s)...")
