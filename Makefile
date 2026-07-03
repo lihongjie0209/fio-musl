@@ -499,7 +499,7 @@ sharedir = $(prefix)/share/fio
 
 all: $(PROGS) $(T_TEST_PROGS) $(UT_PROGS) $(SCRIPTS) $(ENGS_OBJS) FORCE
 
-.PHONY: all install clean test
+.PHONY: all install clean test package
 .PHONY: FORCE cscope
 
 %.o : %.c
@@ -651,6 +651,30 @@ clean: FORCE
 	@rm -f t/fio-btrace2fio t/io_uring t/read-to-pipe-async
 	@rm -rf  doc/output
 	@$(MAKE) -C mock-tests clean
+
+package:
+	@mkdir -p bin
+	@echo "=== Building x86_64 (glibc static) ==="
+	$(MAKE) clean
+	./configure --build-static
+	touch config-host.mak
+	$(MAKE) -j$$(nproc) fio
+	cp fio bin/fio-x86_64
+	@echo "=== Building aarch64 (glibc static) ==="
+	$(MAKE) clean
+	CROSS_COMPILE=aarch64-linux-gnu- ./configure --build-static
+	touch config-host.mak
+	$(MAKE) -j$$(nproc) fio
+	cp fio bin/fio-aarch64
+	@echo "=== Building aarch64 (musl static) ==="
+	$(MAKE) clean
+	CROSS_COMPILE=/opt/aarch64-linux-musl-cross/bin/aarch64-linux-musl- ./configure --build-static
+	touch config-host.mak
+	$(MAKE) -j$$(nproc) fio
+	cp fio bin/fio-aarch64-musl
+	$(MAKE) clean
+	@echo "=== All done ==="
+	@ls -lh bin/
 
 distclean: clean FORCE
 	@rm -f cscope.out fio.pdf fio_generate_plots.pdf fio2gnuplot.pdf fiologparser_hist.pdf
