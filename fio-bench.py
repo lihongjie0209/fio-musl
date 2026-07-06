@@ -22,7 +22,7 @@ from datetime import datetime
 # 配置
 # ============================================================
 
-FIO_IOENGINE = "posixaio"
+FIO_IOENGINE = "libaio"
 
 FIO_SIZE = "10G"   # 测试文件大小
 
