@@ -48,7 +48,7 @@ jobs:
             -v "$PWD:/work" -w /work \
             ${{ matrix.image }} \
             sh -c "
-              apk add --no-cache gcc musl-dev make linux-headers \
+              apk add --no-cache gcc musl-dev make linux-headers libaio-dev \
               && ./configure --build-static \
               && make -j\$(nproc) fio \
               && mv fio ${{ matrix.artifact }}
